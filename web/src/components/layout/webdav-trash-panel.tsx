@@ -1,6 +1,6 @@
 import { App, Button, Empty, Popconfirm, Spin, Tooltip } from "antd";
 import { RefreshCw, RotateCcw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { AppLocale } from "@/i18n";
@@ -29,35 +29,59 @@ export function WebdavTrashPanel({ active, disabled, refreshKey }: { active: boo
 
     const webdavReady = Boolean(webdav.url.trim());
     const busy = disabled || !webdavReady || loading || clearing || Boolean(restoringKey);
-    const configFingerprint = `${webdav.url}\0${webdav.directory}\0${webdav.username}`;
 
-    const loadTrash = useCallback(async () => {
-        if (!webdavReady) return;
-        setLoading(true);
-        try {
-            setEntries(await listAppSyncTrash(webdav));
-        } catch (error) {
-            setEntries([]);
-            message.error(error instanceof Error ? error.message : t("config.webdav.trash.loadFailed"));
-        } finally {
-            setLoading(false);
-        }
-    }, [webdav, webdavReady, message, t]);
+    const webdavRef = useRef(webdav);
+    webdavRef.current = webdav;
 
-    useEffect(() => {
-        if (!webdavReady) {
+    const genRef = useRef(0);
+    const configFingerprint = `${webdav.url}\0${webdav.directory}\0${webdav.username}\0${webdav.password}`;
+
+    const loadTrash = useCallback(async (silent: boolean) => {
+        const config = webdavRef.current;
+        if (!config.url.trim()) {
             setEntries([]);
             return;
         }
-        if (active) void loadTrash();
-    }, [active, webdavReady, configFingerprint, refreshKey, loadTrash]);
+        const gen = genRef.current += 1;
+        setLoading(true);
+        try {
+            const result = await listAppSyncTrash(config);
+            if (gen !== genRef.current) return;
+            setEntries(result);
+        } catch (error) {
+            if (gen !== genRef.current) return;
+            setEntries([]);
+            if (!silent) message.error(error instanceof Error ? error.message : t("config.webdav.trash.loadFailed"));
+        } finally {
+            if (gen === genRef.current) setLoading(false);
+        }
+    }, [message, t]);
+
+    // Invalidate in-flight loads and clear stale rows on any WebDAV config change; no network load triggered.
+    useEffect(() => {
+        genRef.current += 1;
+        setLoading(false);
+        setEntries([]);
+    }, [configFingerprint]);
+
+    // Auto-load once silently on tab activation or after a successful sync (refreshKey change).
+    const prevActiveRef = useRef(false);
+    const prevRefreshKeyRef = useRef(refreshKey);
+    useEffect(() => {
+        const wasActive = prevActiveRef.current;
+        prevActiveRef.current = active;
+        const refreshKeyChanged = refreshKey !== prevRefreshKeyRef.current;
+        prevRefreshKeyRef.current = refreshKey;
+        if (!active || !webdavRef.current.url.trim()) return;
+        if (!wasActive || refreshKeyChanged) void loadTrash(true);
+    }, [active, refreshKey, loadTrash]);
 
     const handleRestore = async (entry: AppSyncTrashListEntry) => {
         setRestoringKey(entry.key);
         try {
             await restoreAppSyncTrashEntry(webdav, entry.domain, entry.id);
             message.success(t("config.webdav.trash.restoreSuccess"));
-            await loadTrash();
+            await loadTrash(false);
         } catch (error) {
             message.error(error instanceof Error ? error.message : t("config.webdav.trash.restoreFailed"));
         } finally {
@@ -70,7 +94,7 @@ export function WebdavTrashPanel({ active, disabled, refreshKey }: { active: boo
         try {
             await clearAppSyncTrash(webdav);
             message.success(t("config.webdav.trash.clearSuccess"));
-            await loadTrash();
+            await loadTrash(false);
         } catch (error) {
             message.error(error instanceof Error ? error.message : t("config.webdav.trash.clearFailed"));
         } finally {
@@ -88,7 +112,7 @@ export function WebdavTrashPanel({ active, disabled, refreshKey }: { active: boo
                 </div>
                 <div className="flex items-center gap-1">
                     <Tooltip title={t("config.webdav.trash.refresh")}>
-                        <Button type="text" size="small" icon={<RefreshCw className="size-3.5" />} disabled={busy} loading={loading} onClick={() => void loadTrash()} />
+                        <Button type="text" size="small" icon={<RefreshCw className="size-3.5" />} disabled={busy} loading={loading} onClick={() => void loadTrash(false)} />
                     </Tooltip>
                     <Popconfirm
                         title={t("config.webdav.trash.clearConfirmTitle")}
