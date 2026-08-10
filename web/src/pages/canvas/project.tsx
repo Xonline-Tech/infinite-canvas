@@ -1547,6 +1547,39 @@ function InfiniteCanvasPage() {
         );
     }, []);
 
+    const deleteHistoryItem = useCallback((nodeId: string, historyId: string) => {
+        setNodes((prev) =>
+            prev.map((node) => {
+                if (node.id !== nodeId || node.type !== CanvasNodeType.Video) return node;
+                const history = node.metadata?.history || [];
+                const deletedIndex = history.findIndex((item) => item.id === historyId);
+                if (deletedIndex < 0 || history.length <= 1) return node;
+                const remaining = history.filter((item) => item.id !== historyId);
+                if (node.metadata?.primaryHistoryId !== historyId) return { ...node, metadata: { ...node.metadata, history: remaining } };
+                const primary = remaining[Math.min(deletedIndex, remaining.length - 1)];
+                const edge = Math.max(node.width, node.height);
+                const size = node.metadata?.freeResize || !primary.naturalWidth || !primary.naturalHeight ? { width: node.width, height: node.height } : fitNodeSize(primary.naturalWidth, primary.naturalHeight, edge, edge);
+                return {
+                    ...node,
+                    position: { x: node.position.x + node.width / 2 - size.width / 2, y: node.position.y + node.height / 2 - size.height / 2 },
+                    ...size,
+                    metadata: {
+                        ...node.metadata,
+                        content: primary.content,
+                        storageKey: primary.storageKey,
+                        naturalWidth: primary.naturalWidth,
+                        naturalHeight: primary.naturalHeight,
+                        bytes: primary.bytes,
+                        mimeType: primary.mimeType,
+                        durationMs: primary.durationMs,
+                        history: remaining,
+                        primaryHistoryId: primary.id,
+                    },
+                };
+            }),
+        );
+    }, []);
+
     const duplicateBatchImage = useCallback((node: CanvasNodeData, imageId: string) => {
         const image = node.metadata?.images?.find((item) => item.id === imageId);
         if (!image?.content) return;
@@ -3076,6 +3109,7 @@ function InfiniteCanvasPage() {
                             onToggleBatch={toggleBatchExpanded}
                             onSetBatchPrimary={setBatchPrimary}
                             onSetHistoryPrimary={setHistoryPrimary}
+                            onDeleteHistoryItem={deleteHistoryItem}
                             onDuplicateBatchImage={duplicateBatchImage}
                             onDownloadBatchImage={downloadBatchImage}
                             onRetryBatchImage={retryBatchImage}

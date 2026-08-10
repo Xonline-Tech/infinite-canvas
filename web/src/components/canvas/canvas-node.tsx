@@ -69,6 +69,7 @@ type CanvasNodeProps = {
     onToggleBatch?: (nodeId: string) => void;
     onSetBatchPrimary?: (nodeId: string, imageId: string) => void;
     onSetHistoryPrimary?: (nodeId: string, historyId: string) => void;
+    onDeleteHistoryItem?: (nodeId: string, historyId: string) => void;
     onDuplicateBatchImage?: (node: CanvasNodeData, imageId: string) => void;
     onDownloadBatchImage?: (node: CanvasNodeData, imageId: string) => void;
     onRetryBatchImage?: (node: CanvasNodeData, imageId: string) => void;
@@ -98,6 +99,7 @@ type NodeContentRendererProps = {
     onToggleBatch?: () => void;
     onSetBatchPrimary?: (imageId: string) => void;
     onSetHistoryPrimary?: (historyId: string) => void;
+    onDeleteHistoryItem?: (historyId: string) => void;
     onDuplicateBatchImage?: (imageId: string) => void;
     onDownloadBatchImage?: (imageId: string) => void;
     onRetryBatchImage?: (imageId: string) => void;
@@ -136,6 +138,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onToggleBatch,
     onSetBatchPrimary,
     onSetHistoryPrimary,
+    onDeleteHistoryItem,
     onDuplicateBatchImage,
     onDownloadBatchImage,
     onRetryBatchImage,
@@ -437,6 +440,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onToggleBatch={() => onToggleBatch?.(data.id)}
                         onSetBatchPrimary={(imageId) => onSetBatchPrimary?.(data.id, imageId)}
                         onSetHistoryPrimary={(historyId) => onSetHistoryPrimary?.(data.id, historyId)}
+                        onDeleteHistoryItem={(historyId) => onDeleteHistoryItem?.(data.id, historyId)}
                         onDuplicateBatchImage={(imageId) => onDuplicateBatchImage?.(data, imageId)}
                         onDownloadBatchImage={(imageId) => onDownloadBatchImage?.(data, imageId)}
                         onRetryBatchImage={(imageId) => onRetryBatchImage?.(data, imageId)}
@@ -710,7 +714,7 @@ function EmptyImageContent({ theme }: NodeContentRendererProps) {
     );
 }
 
-function VideoNodeContent({ node, theme, onSetHistoryPrimary }: NodeContentRendererProps) {
+function VideoNodeContent({ node, theme, onSetHistoryPrimary, onDeleteHistoryItem }: NodeContentRendererProps) {
     const { t } = useTranslation();
     if (!node.metadata?.content)
         return (
@@ -722,12 +726,12 @@ function VideoNodeContent({ node, theme, onSetHistoryPrimary }: NodeContentRende
     return (
         <div className="relative h-full w-full">
             <video src={node.metadata.content} controls className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-no-zoom />
-            <HistorySelector node={node} items={node.metadata.history || []} placement="video" onSelect={onSetHistoryPrimary} />
+            <HistorySelector node={node} items={node.metadata.history || []} placement="video" onSelect={onSetHistoryPrimary} onDelete={onDeleteHistoryItem} />
         </div>
     );
 }
 
-function HistorySelector({ node, items, placement, onSelect }: { node: CanvasNodeData; items: CanvasNodeHistoryItem[]; placement: "text" | "video"; onSelect?: (historyId: string) => void }) {
+function HistorySelector({ node, items, placement, onSelect, onDelete }: { node: CanvasNodeData; items: CanvasNodeHistoryItem[]; placement: "text" | "video"; onSelect?: (historyId: string) => void; onDelete?: (historyId: string) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(false);
@@ -739,20 +743,38 @@ function HistorySelector({ node, items, placement, onSelect }: { node: CanvasNod
                     {items.map((item, index) => {
                         const active = item.id === node.metadata?.primaryHistoryId;
                         return (
-                            <button
-                                key={item.id}
-                                type="button"
-                                className="flex h-10 min-w-20 max-w-28 items-center justify-center rounded-lg px-2 text-[10px] font-medium transition hover:opacity-80"
-                                style={{ background: active ? theme.toolbar.activeBg : "transparent", color: active ? theme.toolbar.activeText : theme.toolbar.item }}
-                                title={node.type === CanvasNodeType.Text ? item.content : t("canvas.node.historyItem", { index: index + 1 })}
-                                aria-pressed={active}
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    onSelect?.(item.id);
-                                }}
-                            >
-                                <span className="truncate">{node.type === CanvasNodeType.Text ? item.content : t("canvas.node.historyItem", { index: index + 1 })}</span>
-                            </button>
+                            <div key={item.id} className="relative">
+                                <button
+                                    type="button"
+                                    className="flex h-10 min-w-20 max-w-28 items-center justify-center rounded-lg px-2 text-[10px] font-medium transition hover:opacity-80"
+                                    style={{ background: active ? theme.toolbar.activeBg : "transparent", color: active ? theme.toolbar.activeText : theme.toolbar.item }}
+                                    title={node.type === CanvasNodeType.Text ? item.content : t("canvas.node.historyItem", { index: index + 1 })}
+                                    aria-pressed={active}
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        onSelect?.(item.id);
+                                    }}
+                                >
+                                    <span className="truncate">{node.type === CanvasNodeType.Text ? item.content : t("canvas.node.historyItem", { index: index + 1 })}</span>
+                                </button>
+                                {placement === "video" && onDelete ? (
+                                    <button
+                                        type="button"
+                                        className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border shadow-sm backdrop-blur-md transition hover:scale-110"
+                                        style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+                                        title={t("common.delete")}
+                                        aria-label={t("common.delete")}
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            onDelete(item.id);
+                                        }}
+                                        onMouseDown={(event) => event.stopPropagation()}
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                    >
+                                        <Trash2 className="size-3" />
+                                    </button>
+                                ) : null}
+                            </div>
                         );
                     })}
                 </div>
@@ -920,6 +942,9 @@ function ExpandedImageCard({ node, image, index, onSetPrimary, onDuplicate, onDo
                     <button type="button" className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("canvas.node.setPrimary")} onClick={(event) => (event.stopPropagation(), onSetPrimary())}>
                         <Star className="size-3 shrink-0" style={{ color: selectionBlue }} />
                         <span className="truncate">{t("canvas.node.setPrimary")}</span>
+                    </button>
+                    <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg border shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} title={t("common.delete")} aria-label={t("common.delete")} onClick={(event) => (event.stopPropagation(), onDelete())} onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+                        <Trash2 className="size-3.5" />
                     </button>
                 </div>
             ) : null}
