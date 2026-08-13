@@ -703,30 +703,6 @@ function CanvasLinkModal({ isOpen, onClose, onConfirm, url }: LinkSafetyModalPro
 }
 
 function ImageNodeContent(props: NodeContentRendererProps) {
-    if (!props.node.metadata?.content && !props.isBatchRoot) return <EmptyImageContent {...props} />;
-
-    return (
-        <Modal
-            open={isOpen}
-            centered
-            destroyOnHidden
-            width={400}
-            title={t("agent.message.openExternal")}
-            okText={t("agent.message.continueOpen")}
-            cancelText={t("agent.message.close")}
-            onOk={() => {
-                onConfirm();
-                onClose();
-            }}
-            onCancel={onClose}
-        >
-            <div className="text-sm text-black/55 dark:text-white/55">{t("agent.message.externalDescription")}</div>
-            <div className="mt-3 max-h-28 overflow-auto break-all rounded-lg bg-black/[.035] px-3 py-2 font-mono text-xs leading-5 dark:bg-white/[.06]">{url}</div>
-        </Modal>
-    );
-}
-
-function ImageNodeContent(props: NodeContentRendererProps) {
     if ((props.node.metadata?.images?.length || 0) > 1) {
         return (
             <ImageBatchGallery
