@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Modal } from "antd";
-import { Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, Video } from "lucide-react";
+import { ChevronRight, Copy, Download, Group, History, Image as ImageIcon, Music2, Puzzle, RefreshCw, Star, Trash2, Video } from "lucide-react";
 import { Streamdown, type Components, type ExtraProps, type LinkSafetyModalProps } from "streamdown";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -13,7 +13,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { GallerySkeleton, GallerySkeletonOverlay } from "./gallery-controls";
 import { HistoryFocusButton, HistoryPagingChrome, ImageBatchGallery } from "./canvas-node-gallery";
-import { CanvasNodeType, type CanvasNodeData, type Position } from "@/types/canvas";
+import { CanvasNodeType, type CanvasNodeData, type CanvasNodeHistoryItem, type CanvasNodeImage, type Position } from "@/types/canvas";
 import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { useTranslation } from "react-i18next";
@@ -99,6 +99,7 @@ type NodeContentRendererProps = {
     onRetry?: (node: CanvasNodeData) => void;
     onGenerateImage?: (node: CanvasNodeData) => void;
     onSetBatchPrimary?: (imageId: string) => void;
+    onSetHistoryPrimary?: (historyId: string) => void;
     onDuplicateBatchImage?: (imageId: string) => void;
     onDownloadBatchImage?: (imageId: string) => void;
     onRetryBatchImage?: (imageId: string) => void;
@@ -453,6 +454,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onRetry={onRetry}
                         onGenerateImage={onGenerateImage}
                         onSetBatchPrimary={(imageId) => onSetBatchPrimary?.(data.id, imageId)}
+                        onSetHistoryPrimary={(historyId) => onSetHistoryPrimary?.(data.id, historyId)}
                         onDuplicateBatchImage={(imageId) => onDuplicateBatchImage?.(data, imageId)}
                         onDownloadBatchImage={(imageId) => onDownloadBatchImage?.(data, imageId)}
                         onRetryBatchImage={(imageId) => onRetryBatchImage?.(data, imageId)}
@@ -570,38 +572,37 @@ function MissingPluginContent({ theme, type }: Pick<NodeContentRendererProps, "t
     );
 }
 
-function TextContent({ node, theme, candidateMode, isEditingContent, textareaRef, mentionReferences, onContentChange, onStartEditing, onStopEditing, onGenerateImage, onToggleCandidateMode }: NodeContentRendererProps) {
+function TextContent({ node, theme, isEditingContent, textareaRef, mentionReferences, onContentChange, onStartEditing, onStopEditing, onGenerateImage, onSetHistoryPrimary }: NodeContentRendererProps) {
     const { t } = useTranslation();
     const previewPressRef = useRef<{ pointerId: number; x: number; y: number; hasMoved: boolean } | null>(null);
     const fontSize = node.metadata?.fontSize || 14;
-    const focusCount = historyFocusCount(node.metadata?.history || [], node.metadata?.primaryHistoryId, node.metadata?.content);
+    const history = node.metadata?.history || [];
+    const hasHistory = history.length > 1;
     const textStyle = { fontSize: `${fontSize}px`, lineHeight: `${Math.round(fontSize * 1.65)}px`, color: theme.node.text, boxSizing: "border-box" } as React.CSSProperties;
 
     return (
-        <div className="flex h-full w-full flex-col overflow-hidden">
-            <div className="flex flex-wrap items-center justify-end gap-1.5 px-3 pb-1 pt-2.5">
-                {focusCount >= 2 ? <HistoryFocusButton count={focusCount} active={candidateMode} onToggle={() => onToggleCandidateMode?.(node.id)} placement="inline" /> : null}
-                {!candidateMode ? <button
-                    type="button"
-                    className="inline-flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10 motion-reduce:transition-none"
-                    style={{ color: theme.node.text }}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onGenerateImage?.(node);
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    title={t("canvas.node.generateImage")}
-                    aria-label={t("canvas.node.generateImage")}
-                >
-                    <ImageIcon className="size-3.5" />
-                    {t("canvas.node.generate")}
-                </button> : null}
-            </div>
+        <div className="flex h-full w-full flex-col overflow-hidden pt-8">
+            <HistorySelector node={node} items={history} placement="text" onSelect={onSetHistoryPrimary} />
+            <button
+                type="button"
+                className="absolute right-3 top-3 z-20 inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-medium opacity-85 backdrop-blur-md transition hover:scale-[1.02] hover:opacity-100"
+                style={{ background: `${theme.toolbar.panel}dd`, borderColor: theme.node.stroke, color: theme.node.text }}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onGenerateImage?.(node);
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                title={t("canvas.node.generateImage")}
+                aria-label={t("canvas.node.generateImage")}
+            >
+                <ImageIcon className="size-3.5" />
+                {t("canvas.node.generate")}
+            </button>
             {isEditingContent ? (
                 <CanvasResourceMentionTextarea
                     ref={textareaRef}
-                    className={`thin-scrollbar block h-full w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent pl-4 pr-14 pt-0 m-0 font-mono outline-none select-text appearance-none pb-4`}
+                    className={`thin-scrollbar block h-full w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent pl-4 pr-14 pt-0 m-0 font-mono outline-none select-text appearance-none ${hasHistory ? "pb-28" : "pb-4"}`}
                     style={textStyle}
                     value={node.metadata?.content || ""}
                     references={mentionReferences}
@@ -617,7 +618,7 @@ function TextContent({ node, theme, candidateMode, isEditingContent, textareaRef
                 />
             ) : (
                 <div
-                    className={`thin-scrollbar block h-full w-full overflow-y-auto bg-transparent pl-4 pr-14 pt-0 font-mono pb-4`}
+                    className={`thin-scrollbar block h-full w-full overflow-y-auto bg-transparent pl-4 pr-14 pt-0 font-mono ${hasHistory ? "pb-28" : "pb-4"}`}
                     style={textStyle}
                     onClick={(event) => {
                         const target = event.target;
@@ -702,6 +703,30 @@ function CanvasLinkModal({ isOpen, onClose, onConfirm, url }: LinkSafetyModalPro
 }
 
 function ImageNodeContent(props: NodeContentRendererProps) {
+    if (!props.node.metadata?.content && !props.isBatchRoot) return <EmptyImageContent {...props} />;
+
+    return (
+        <Modal
+            open={isOpen}
+            centered
+            destroyOnHidden
+            width={400}
+            title={t("agent.message.openExternal")}
+            okText={t("agent.message.continueOpen")}
+            cancelText={t("agent.message.close")}
+            onOk={() => {
+                onConfirm();
+                onClose();
+            }}
+            onCancel={onClose}
+        >
+            <div className="text-sm text-black/55 dark:text-white/55">{t("agent.message.externalDescription")}</div>
+            <div className="mt-3 max-h-28 overflow-auto break-all rounded-lg bg-black/[.035] px-3 py-2 font-mono text-xs leading-5 dark:bg-white/[.06]">{url}</div>
+        </Modal>
+    );
+}
+
+function ImageNodeContent(props: NodeContentRendererProps) {
     if ((props.node.metadata?.images?.length || 0) > 1) {
         return (
             <ImageBatchGallery
@@ -733,7 +758,7 @@ function EmptyImageContent({ theme }: NodeContentRendererProps) {
     );
 }
 
-function VideoNodeContent({ node, theme, candidateMode, onToggleCandidateMode }: NodeContentRendererProps) {
+function VideoNodeContent({ node, theme, onSetHistoryPrimary }: NodeContentRendererProps) {
     const { t } = useTranslation();
     const focusCount = historyFocusCount(node.metadata?.history || [], node.metadata?.primaryHistoryId, node.metadata?.content);
     if (!node.metadata?.content)
